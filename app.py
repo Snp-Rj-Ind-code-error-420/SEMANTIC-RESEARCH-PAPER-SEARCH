@@ -5,6 +5,7 @@ import faiss
 
 from datasets import load_dataset
 from sentence_transformers import SentenceTransformer
+from huggingface_hub import hf_hub_download
 
 @st.cache_data
 def load_papers():
@@ -22,7 +23,14 @@ def load_embedding_model():
 
 @st.cache_resource
 def load_index():
-    return faiss.read_index("paper_faiss.index")
+
+    index_path = hf_hub_download(
+        repo_id="lensy402/paper-search-index",
+        filename="paper_faiss.index",
+        repo_type="dataset"
+    )
+
+    return faiss.read_index(index_path)
 
 dataset = load_papers()
 df=pd.DataFrame(dataset)
