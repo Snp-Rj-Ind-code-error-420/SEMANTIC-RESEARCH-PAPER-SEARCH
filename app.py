@@ -143,7 +143,7 @@ if st.button("🔍 SEARCH"):
 
         with st.spinner("Searching papers..."):
 
-            results = search_paper(query, k=5)
+            results = search_paper(query)
 
         st.subheader("🔎 Search Results")
 
