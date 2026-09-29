@@ -59,7 +59,7 @@ def search_paper(query, k=50, q=10):
     # -----------------------------------------
     # 2. FAISS retrieves candidate papers
     # -----------------------------------------
-    scores, indices = cpu_index.search(
+    scores, indices = index.search(
         query_embedding,
         k
     )
