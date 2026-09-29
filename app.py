@@ -4,7 +4,7 @@ import pandas as pd
 import faiss
 
 from datasets import load_dataset
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer,CrossEncoder
 from huggingface_hub import hf_hub_download
 
 @st.cache_data
@@ -19,6 +19,11 @@ def load_papers():
 def load_embedding_model():
     return SentenceTransformer(
         "sentence-transformers/all-MiniLM-L6-v2"
+    )
+@st.cache_resource
+def load_reranker_model():
+    return CrossEncoder(
+        "cross-encoder/ms-marco-MiniLM-L-6-v2"
     )
 
 @st.cache_resource
@@ -36,10 +41,13 @@ dataset = load_papers()
 df=pd.DataFrame(dataset)
 index = load_index()
 embedding_model = load_embedding_model()
+reranker=load_reranker_model()
 
-def search_paper(query, k=5):
+def search_paper(query, k=50, q=10):
 
-    # Create query embedding
+    # -----------------------------------------
+    # 1. Create query embedding
+    # -----------------------------------------
     query_embedding = embedding_model.encode(
         [query],
         convert_to_numpy=True
@@ -48,20 +56,61 @@ def search_paper(query, k=5):
     # Normalize for cosine similarity
     faiss.normalize_L2(query_embedding)
 
-    # Search FAISS
-    scores, indices = index.search(
+    # -----------------------------------------
+    # 2. FAISS retrieves candidate papers
+    # -----------------------------------------
+    scores, indices = cpu_index.search(
         query_embedding,
         k
     )
 
-    results = []
-    for score, idx in zip(scores[0], indices[0]):
+    # -----------------------------------------
+    # 3. Create query-paper pairs
+    # -----------------------------------------
+    pairs = []
+    valid_indices = []
 
-        # FAISS can return -1 if there aren't enough results
+    for idx in indices[0]:
+
         if idx == -1:
             continue
 
+        paper_text = (
+            str(df.iloc[idx]["title"])
+            + " "
+            + str(df.iloc[idx]["abstract"])
+        )
+
+        pairs.append([
+            query,
+            paper_text
+        ])
+
+        valid_indices.append(idx)
+
+    # -----------------------------------------
+    # 4. CrossEncoder reranking
+    # -----------------------------------------
+    rerank_scores = reranker.predict(pairs)
+
+    # -----------------------------------------
+    # 5. Sort by reranker score
+    # -----------------------------------------
+    ranked = sorted(
+        zip(valid_indices, rerank_scores),
+        key=lambda x: x[1],
+        reverse=True
+    )
+
+    # -----------------------------------------
+    # 6. Return final top-q results
+    # -----------------------------------------
+    results = []
+
+    for idx, score in ranked[:q]:
+
         results.append({
+            "index": int(idx),
             "score": float(score),
             "title": df.iloc[idx]["title"],
             "abstract": df.iloc[idx]["abstract"]
